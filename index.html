@@ -1,11 +1,21 @@
-useEffect(() => {
-  if (window.location.search || window.location.hash.includes('?')) {
-    try {
-      const cleanURL = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, cleanURL);
-      console.log("Cleared tracking parameters smoothly to prevent routing/blank state crashes. ✅");
-    } catch (err) {
-      console.error("URL tracking cleanup failed:", err);
-    }
-  }
-}, []);
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="https://i.ibb.co/Lzn4PZk/image-5.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- كود توثيق جوجل المعتمد والناجح لحسابك -->
+    <meta name="google-site-verification" content="ZCf6C8GE7PyEWF_WMUSP6P3VoHbszrjP5SGlctzPr_Q" />
+    <meta name="google-site-verification" content="sMe9o4ndrTx6bFdakgRATCmT9e8IM5l1mKq9bZbx1xE" />
+    
+    <!-- الاسم العربي الصافي المعتمد في البحث -->
+    <title>تطبيق دردشة دودي</title>
+    <meta name="description" content="دردشة دودي للدردشة الذكية والغرف التفاعلية والرسائل الخاصة">
+  </head>
+  <body class="bg-slate-900 text-white">
+    <div id="root"></div>
+    <!-- تشغيل التطبيق المباشر والنظيف المتوافق مع ملفاتك الأصلية -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
