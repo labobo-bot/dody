@@ -1,50 +1,11 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- الاسم العربي الفخم المثبت في النتيجة الأولى بجوجل -->
-    <title>تطبيق دردشة دودي</title>
-    
-    <meta name="description" content="دردشة دودي للدردشة الذكية والغرف التفاعلية والرسائل الخاصة">
-    
-    <link rel="icon" type="image/png" href="https://ibb.co">
-    
-    <!-- كود توثيق جوجل المعتمد والناجح 100% لحسابك -->
-    <meta name="google-site-verification" content="ZCf6C8GE7PyEWF_WMUSP6P3VoHbszrjP5SGlctzPr_Q" />
-    <meta name="google-site-verification" content="sMe9o4ndrTx6bFdakgRATCmT9e8IM5l1mKq9bZbx1xE" />
-    
-    <!-- السطر السحري الحاسم: تحويل فوري وصاروخي إلى سيرفرك الحي الشغال لمنع الشاشة البيضاء والـ 404 للأبد -->
-    <meta http-equiv="refresh" content="0; url=https://run.app" />
-
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #0f172a;
-            font-family: Arial, sans-serif;
-            color: white;
-        }
-        .loader {
-            border: 4px solid #1e293b;
-            border-top: 4px solid #fbbf24;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="loader"></div>
-    <p style="margin-right:15px;">...جاري الانتقال إلى تطبيق دردشة دودي</p>
-</body>
-</html>
+useEffect(() => {
+  if (window.location.search || window.location.hash.includes('?')) {
+    try {
+      const cleanURL = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanURL);
+      console.log("Cleared tracking parameters smoothly to prevent routing/blank state crashes. ✅");
+    } catch (err) {
+      console.error("URL tracking cleanup failed:", err);
+    }
+  }
+}, []);
