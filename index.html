@@ -43,13 +43,10 @@
     </style>
 </head>
 <body>
-    <!-- الحاوية الرئيسية لتشغيل ريأكت وإرضاء سيرفر فيرسيل ليعطي علامة خضراء -->
     <div id="root"></div>
-    
-    <!-- اللودر الجمالي للمستخدم ريثما يتم التحويل التلقائي للسيرفر -->
     <div class="loader" style="position: absolute;"></div>
     
-    <!-- ملف التشغيل الأساسي المفقود الذي بسببه اعترضت منصة فيرسيل -->
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- تم تصحيح المسار بنقطة واحدة ليتوافق مع نظام Vite ويختفي الأحمر فوراً -->
+    <script type="module" src="./src/main.tsx"></script>
 </body>
 </html>
