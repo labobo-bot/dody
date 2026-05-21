@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://sitemaps.org">
   <url>
-    <loc>https://vercel.app</loc>
-    <lastmod>2026-05-20</lastmod>
-    <changefreq>daily</changefreq>
+    <!-- توجيه الخريطة مباشرة لرابط السيرفر الحي الشغال 100% -->
+    <loc>https://run.app</loc>
+    <lastmod>2026-05-21</lastmod>
+    <changefreq>always</changefreq>
     <priority>1.0</priority>
   </url>
 </urlset>
