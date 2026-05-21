@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot, updateDoc, getDoc, setDoc } from 'firebase/firestore';
-import { ref, push, onValue, set, remove, update, serverTimestamp as rtdbTimestamp, get as rtdbGet } from 'firebase/database';
-import { auth, db, rtdb } from '../firebase';
-import { Send, LogOut, MessageSquare, Crown, User as UserIcon, ChevronLeft, Trash2, ShieldCheck, Shield, Sparkles, Ban, VolumeX, UserMinus } from 'lucide-react';
+import { collection, addDoc, doc, onSnapshot, query as fsQuery, orderBy, limit, deleteDoc, updateDoc, deleteField, setDoc } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { auth, db } from '../firebase';
+import { Send, LogOut, MessageSquare, Crown, User as UserIcon, ChevronLeft, Trash2, ShieldCheck, Shield, Ban, UserMinus, MoreVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { UserData } from '../types';
 
 interface Message {
   id: string;
@@ -13,46 +14,148 @@ interface Message {
   displayName: string;
   photoURL: string;
   timestamp: any;
-  membership?: 'premium' | 'influencer' | 'famous';
+  membership?: 'premium' | 'influencer' | 'famous' | null;
   isVip?: boolean;
+  isManager?: boolean;
+  username?: string | null;
+  createdAt?: any;
 }
 
-export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }: { room: string; roomName: string; onBack: () => void, onOpenDM?: (u: any) => void, userData?: any }) {
+export default function ChatRoom({ room, roomName, onBack, onOpenDM, onOpenProfile, userData }: { room: string; roomName: string; onBack: () => void, onOpenDM?: (u: UserData) => void, onOpenProfile?: (u: UserData) => void, userData?: UserData }) {
+  const roomId = room;
   const [messages, setMessages] = useState<Message[]>([]);
-  const [joinTime] = useState(() => Date.now());
+  const [loading, setLoading] = useState(false);
   const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(true);
   const [userMembership, setUserMembership] = useState<string | null>(userData?.membership || null);
-  const [userIsVip, setUserIsVip] = useState(!!userData?.isVip);
-  const [adminTargetUser, setAdminTargetUser] = useState<any | null>(null);
-  const [successAction, setSuccessAction] = useState<string | null>(null);
+  const [userIsVip, setUserIsVip] = useState(!!(userData?.isVip || (auth.currentUser?.email === 'lm656508@gmail.com')));
   const [isMuted, setIsMuted] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [showRoyalEntry, setShowRoyalEntry] = useState(false);
   const [profilesCache, setProfilesCache] = useState<Record<string, any>>({});
+  const [privateRoomData, setPrivateRoomData] = useState<any>(null);
+  const [showBannedModal, setShowBannedModal] = useState(false);
+  const [bannedUsersList, setBannedUsersList] = useState<any[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const effectiveMyUid = auth.currentUser?.email === 'lm656508@gmail.com' ? 'dev_admin_account_lm656508' : auth.currentUser?.uid;
+
+  useEffect(() => {
+    // Listen to private room settings
+    const pRoomRef = doc(db, 'private_rooms', room);
+    const unsub = onSnapshot(pRoomRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setPrivateRoomData(data);
+        
+        // Active Ban Check: If I am currently in the room and get banned, kick me out
+        if (data.bannedUsers && effectiveMyUid && data.bannedUsers[effectiveMyUid]) {
+          alert('لقد تم طردك من هذه الغرفة بواسطة المشهور 🚫');
+          onBack();
+        }
+
+        // Update local banned users list for the modal
+        if (data.bannedUsers) {
+          const uids = Object.keys(data.bannedUsers);
+          const list = uids.map(uid => ({
+            uid,
+            displayName: profilesCache[uid]?.displayName || 'عضو غير معروف',
+            username: profilesCache[uid]?.username || '...'
+          }));
+          setBannedUsersList(list);
+        } else {
+          setBannedUsersList([]);
+        }
+      } else {
+        setPrivateRoomData(null);
+        setBannedUsersList([]);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.GET, `private_rooms/${room}`));
+
+    return () => unsub();
+  }, [room, effectiveMyUid, profilesCache]);
+
+  const handleKickFromPrivateRoom = async (targetUid: string, targetName: string) => {
+    if (!privateRoomData || privateRoomData.ownerId !== effectiveMyUid) return;
+    if (confirm(`هل أنت متأكد من طرد ${targetName} وحظره نهائياً من غرفتك؟`)) {
+      try {
+        const pRoomRef = doc(db, 'private_rooms', room);
+        await updateDoc(pRoomRef, {
+          [`bannedUsers.${targetUid}`]: true
+        });
+        
+        // Send a system message announcement
+        const messagesCol = collection(doc(db, 'rooms', room), 'messages');
+        const clientTime = Date.now();
+        await addDoc(messagesCol, {
+          text: `المشهور ${privateRoomData.ownerName} قام بطرد ${targetName} خارج الغرفة 🎪🚫`,
+          uid: 'system_announcement',
+          timestamp: clientTime,
+          createdAt: clientTime,
+          displayName: 'System'
+        });
+      } catch (err) {
+        console.error("Kick error:", err);
+      }
+    }
+  };
+
+  const handleUnban = async (targetUid: string) => {
+    if (!privateRoomData || privateRoomData.ownerId !== effectiveMyUid) return;
+    try {
+      const pRoomRef = doc(db, 'private_rooms', room);
+      await updateDoc(pRoomRef, {
+        [`bannedUsers.${targetUid}`]: deleteField()
+      });
+    } catch (err) {
+      console.error("Unban error:", err);
+    }
+  };
+
+  const toggleRoomLock = async () => {
+    if (!privateRoomData || privateRoomData.ownerId !== effectiveMyUid) return;
+    const roomRef = doc(db, 'private_rooms', room);
+    await updateDoc(roomRef, { isLocked: !privateRoomData.isLocked });
+  };
 
   useEffect(() => {
     // Royal Entry Notification Listener
-    const entryRef = ref(rtdb, `rooms/${room}/entry_events`);
-    const unsubscribeEntry = onValue(entryRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.timestamp > Date.now() - 5000) { // Only show if event is fresh (last 5s)
-        setShowRoyalEntry(true);
-        setTimeout(() => setShowRoyalEntry(false), 4000); // Auto hide after 4s
+    const entryRef = doc(db, 'rooms', room, 'entry_events', 'royal');
+    const unsubscribeEntry = onSnapshot(entryRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && data.timestamp > Date.now() - 5000) { // Only show if event is fresh (last 5s)
+          setShowRoyalEntry(true);
+          setTimeout(() => setShowRoyalEntry(false), 4000); // Auto hide after 4s
+        }
       }
-    });
+    }, (err) => console.error("Royal entry error:", err));
 
     // If current user is the developer, trigger the entry event
     if (auth.currentUser?.email === 'lm656508@gmail.com') {
       window.localStorage.setItem('dody_golden_id', '11111'); // Local hint
-      set(entryRef, {
+      setDoc(entryRef, {
         timestamp: Date.now(),
         type: 'royal_entry'
-      });
+      }).catch(err => console.error("Entry write error:", err));
     }
 
     return () => unsubscribeEntry();
+  }, [room]);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    
+    const effectiveUid = auth.currentUser.email === 'lm656508@gmail.com' ? 'dev_admin_account_lm656508' : auth.currentUser.uid;
+    const presenceRef = doc(db, 'rooms_presence', room);
+    
+    // Set presence
+    setDoc(presenceRef, { [effectiveUid]: true, timestamp: Date.now() }, { merge: true })
+      .catch(err => console.error("Presence set error:", err));
+
+    return () => {
+      updateDoc(presenceRef, { [effectiveUid]: deleteField() })
+        .catch(err => console.error("Presence delete error:", err));
+    };
   }, [room]);
 
   useEffect(() => {
@@ -67,9 +170,11 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
   useEffect(() => {
     if (!auth.currentUser) return;
     
+    const effectiveUid = auth.currentUser.email === 'lm656508@gmail.com' ? 'dev_admin_account_lm656508' : auth.currentUser.uid;
+    
     // Unified Meta Listener for self (Muted, Banned, Membership, VIP Status)
-    // Even if App.tsx monitors this, we keep a dedicated one for Banned detection just in case.
-    const unsubMeta = onSnapshot(doc(db, 'users', auth.currentUser.uid), (docSnap: any) => {
+    const path = `users/${effectiveUid}`;
+    const unsubMeta = onSnapshot(doc(db, 'users', effectiveUid), (docSnap: any) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.isBanned) {
@@ -77,7 +182,7 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
           auth.signOut();
         }
       }
-    }, (err) => console.error("Self Meta Error:", err.message || err));
+    }, (err) => handleFirestoreError(err, OperationType.GET, path));
 
     return () => unsubMeta();
   }, []);
@@ -85,77 +190,105 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
   useEffect(() => {
     if (!auth.currentUser) return;
     
-    // Live RTDB Sync specifically requested for the current user
-    const userStatusRef = ref(rtdb, `users/${auth.currentUser.uid}`);
-    const unsubRTDB = onValue(userStatusRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
+    const effectiveUid = auth.currentUser.email === 'lm656508@gmail.com' ? 'dev_admin_account_lm656508' : auth.currentUser.uid;
+    
+    // Live Firestore Sync specifically requested for the current user
+    const path = `users/${effectiveUid}`;
+    const unsubFirestoreSync = onSnapshot(doc(db, 'users', effectiveUid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         setUserIsVip(!!data.isVip);
         setUserMembership(data.isVip ? data.membership : null);
         setUsername(data.username || null);
         setIsMuted(!!data.isMuted);
       }
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, path));
 
-    // Global listener for users node to ensure everyone sees rank changes instantly
-    const allUsersRef = ref(rtdb, 'users');
-    const unsubAll = onValue(allUsersRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setProfilesCache(data);
-      }
-    });
+    // Global listener for users collection to ensure everyone sees rank changes instantly
+    const usersCol = collection(db, 'users');
+    const unsubAll = onSnapshot(usersCol, (snapshot) => {
+      const cache: Record<string, any> = {};
+      snapshot.forEach((uDoc) => {
+        cache[uDoc.id] = uDoc.data();
+      });
+      setProfilesCache(cache);
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'users'));
 
     return () => {
-      unsubRTDB();
+      unsubFirestoreSync();
       unsubAll();
     };
   }, []);
 
   useEffect(() => {
-    // Realtime Database for Instant Sync
-    const messagesRef = ref(rtdb, `rooms/${room}/messages`);
+    if (!roomId) { console.error("Room ID is missing!"); return; }
+    setLoading(true);
     
-    // Using onValue to listen for real-time changes
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const msgList = Object.entries(data).map(([id, val]: [string, any]) => ({
-          id,
-          ...val
-        })) as Message[];
+    // Subscriber to Firestore collection
+    const messagesRef = collection(doc(db, 'rooms', roomId), 'messages');
+    const q = fsQuery(messagesRef, orderBy('timestamp', 'asc'), limit(50));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: Message[] = [];
+      snapshot.forEach((docSnap) => {
+        const val = docSnap.data();
+        if (!val) return;
+        const rawTime = val.timestamp || val.createdAt;
         
-        // Robust sorting with fallback for pending server timestamps
-        msgList.sort((a, b) => {
-          const tA = a.timestamp || Date.now();
-          const tB = b.timestamp || Date.now();
-          return tA - tB;
-        });
+        let calculatedDate = new Date();
+        if (rawTime) {
+          if (typeof rawTime === 'number') {
+            calculatedDate = new Date(rawTime);
+          } else if (rawTime instanceof Date) {
+            calculatedDate = rawTime;
+          } else if (typeof rawTime.toDate === 'function') {
+            calculatedDate = rawTime.toDate();
+          } else if (typeof rawTime.toMillis === 'function') {
+            calculatedDate = new Date(rawTime.toMillis());
+          } else if (typeof rawTime === 'string') {
+            const parsed = Date.parse(rawTime);
+            if (!isNaN(parsed)) {
+              calculatedDate = new Date(parsed);
+            }
+          }
+        }
         
-        // Apply joinTime filter: only messages since joining
-        const recentMessages = msgList.filter(m => {
-          const mTime = m.timestamp || Date.now();
-          return mTime >= joinTime;
+        const timestampNum = calculatedDate.getTime() || Date.now();
+        
+        msgs.push({
+          id: docSnap.id,
+          text: val.text || '',
+          uid: val.uid || '',
+          displayName: val.displayName || 'عضو غير معروف',
+          photoURL: val.photoURL || '',
+          membership: val.membership || null,
+          isVip: !!val.isVip,
+          isManager: !!val.isManager,
+          username: val.username || null,
+          ...val,
+          timestamp: timestampNum,
+          createdAt: calculatedDate
         });
-
-        setMessages(recentMessages.filter(m => {
-          // If profile exists or it's a system announcement, keep it
-          // Otherwise, if it's been more than 10 seconds and still no profile, it's likely a ghost
-          if (m.uid === 'system_announcement') return true;
-          const hasProfile = profilesCache[m.uid] || data[m.id]; // data[m.id] has inline profile
-          return !!hasProfile;
-        }));
-      } else {
-        setMessages([]);
-      }
+      });
+      
+      console.log("Room ID:", roomId, "Fetched Firestore messages:", msgs);
+      setMessages(msgs);
       setLoading(false);
     }, (error) => {
-      console.error("RTDB Error:", error.message || error);
+      console.error("Critical Chat Error (Firestore):", error);
+      handleFirestoreError(error, OperationType.GET, `rooms/${roomId}/messages`);
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, [room]);
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 1000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(fallbackTimer);
+    };
+  }, [roomId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -165,45 +298,60 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!roomId) { console.error("Room ID is missing!"); return; }
     if (!inputText.trim() || !auth.currentUser || isMuted) return;
 
     const text = inputText;
     setInputText('');
+    console.log("Sending message to room ID:", roomId, "with text:", text);
 
     try {
       // Determine membership
       let membership = userMembership;
-      const isVip = userIsVip;
 
       // Auto-assign famous to manager if not already set
       if (auth.currentUser.email === 'lm656508@gmail.com') {
         if (!membership) membership = 'famous';
       }
 
-      // 1. RTDB Sync - Primary for real-time
-      const messagesRef = ref(rtdb, `rooms/${room}/messages`);
-      const newMessageRef = push(messagesRef);
+      // Prepare payload
       const isDev = auth.currentUser.email === 'lm656508@gmail.com' || auth.currentUser.uid === 'dev_admin_account_lm656508';
+      const senderUid = isDev ? 'dev_admin_account_lm656508' : auth.currentUser.uid;
+      const clientTime = Date.now();
       
-        const payload = {
+      const payload = {
         text,
-        uid: auth.currentUser.uid,
-        email: auth.currentUser.email,
+        uid: senderUid,
         displayName: userData?.displayName || (isDev ? 'دودي-Dody 👑' : (auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Unknown')),
         photoURL: userData?.photoURL || auth.currentUser.photoURL || '',
-        timestamp: rtdbTimestamp(),
+        timestamp: clientTime,
         membership: userMembership, // Use current active membership
         isVip: userIsVip || isDev,
-        isManager: isDev, // Privacy flag
+        isManager: isDev,
         username: isDev ? 'aa' : (username || null)
       };
 
-      await set(newMessageRef, payload);
-
-      // 2. Firestore Persistence - Secondary backup
-      await addDoc(collection(db, 'rooms', room, 'messages'), payload);
-    } catch (err: any) {
-      console.error("Error sending message:", err.message || err);
+      // Firestore Write
+      try {
+        const firestorePayload = {
+          text,
+          uid: senderUid,
+          displayName: payload.displayName,
+          photoURL: payload.photoURL,
+          membership: payload.membership || null,
+          isVip: payload.isVip || false,
+          isManager: payload.isManager || false,
+          username: payload.username || null,
+          createdAt: clientTime,
+          timestamp: clientTime
+        };
+        await addDoc(collection(doc(db, 'rooms', roomId), 'messages'), firestorePayload);
+      } catch (err) {
+        console.error("Firestore message write error:", err);
+        handleFirestoreError(err, OperationType.CREATE, `rooms/${roomId}/messages`);
+      }
+    } catch (err) {
+      console.error("Overall message send error:", err);
     }
   };
 
@@ -211,9 +359,9 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
     if (!window.confirm('هل أنت متأكد من حذف هذه الرسالة؟')) return;
     
     try {
-      await remove(ref(rtdb, `rooms/${room}/messages/${messageId}`));
+      await deleteDoc(doc(db, 'rooms', room, 'messages', messageId));
     } catch (err: any) {
-      console.error("Error deleting message:", err.message || err);
+      console.error("Error deleting message:", err?.message || String(err));
       alert("فشل في حذف الرسالة.");
     }
   };
@@ -221,118 +369,14 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
   const currentUserEmail = auth.currentUser?.email;
   const isAdmin = currentUserEmail === 'lm656508@gmail.com';
 
-  const grantMembership = async (type: 'premium' | 'influencer' | 'famous' | null) => {
-    if (!adminTargetUser || !auth.currentUser) return;
-    const targetUserId = adminTargetUser.uid;
-
-    // Optimistic Update for immediate UI feedback
-    if (type) {
-      setProfilesCache(prev => ({
-        ...prev,
-        [targetUserId]: { ...prev[targetUserId], isVip: true, membership: type }
-      }));
-    }
-
-    const userRef = ref(rtdb, `users/${targetUserId}`);
-    update(userRef, {
-      isVip: type !== null,
-      membership: type,
-    }).then(async () => {
-      setSuccessAction(type || 'remove');
-      // Update Firestore for long-term storage
-      await setDoc(doc(db, 'users', targetUserId), { 
-        isVip: type !== null, 
-        membership: type, 
-        updatedAt: new Date().toISOString() 
-      }, { merge: true });
-
-      // Announcement
-      const rankNames = { premium: 'المميز', influencer: 'المؤثر', famous: 'المشهور' };
-      const messageText = type 
-        ? `🎊 تم منح رتبة #${rankNames[type]} للمستخدم (${adminTargetUser.displayName}) بواسطة المطور دودي-Dody 👑`
-        : `⚠️ تم سحب المزايا الملكية من المستخدم (${adminTargetUser.displayName}) بواسطة المطور دودي-Dody`;
-
-      await set(push(ref(rtdb, `rooms/${room}/messages`)), {
-        text: messageText,
-        uid: 'system_announcement',
-        displayName: 'إشعار ملكي 👑',
-        photoURL: 'https://api.dicebear.com/7.x/initials/svg?seed=Crown',
-        timestamp: rtdbTimestamp(),
-        membership: 'famous',
-        isVip: true
-      });
-
-      setTimeout(() => {
-        setAdminTargetUser(null);
-        setSuccessAction(null);
-      }, 1500);
-    }).catch((error) => {
-      alert('خطأ في التنفيذ: ' + error.message);
-    });
-  };
-
-  const toggleMute = async () => {
-    if (!adminTargetUser) return;
-    try {
-      const targetUserId = adminTargetUser.uid;
-      const userRef = doc(db, 'users', targetUserId);
-      const userSnap = await getDoc(userRef);
-      const currentlyMuted = userSnap.exists() ? !!userSnap.data().isMuted : false;
-      const newMuteStatus = !currentlyMuted;
-      
-      // Update Firestore
-      await setDoc(userRef, { isMuted: newMuteStatus }, { merge: true });
-      
-      // Update RTDB (Direct Link)
-      await update(ref(rtdb, 'users/' + targetUserId), { isMuted: newMuteStatus });
-
-      console.log('تم التحديث بنجاح ✅ - حالة الكتم:', newMuteStatus);
-      alert('تم تحديث البيانات في Firebase ✅');
-      
-      setSuccessAction('mute');
-      setTimeout(() => {
-        setAdminTargetUser(null);
-        setSuccessAction(null);
-      }, 1500);
-    } catch (err: any) {
-      console.error("Mute toggle error:", err.message || err);
-      alert("فشل التحكم بالكتم");
-      setSuccessAction(null);
-    }
-  };
-
-  const handleKick = async () => {
-    if (!adminTargetUser) return;
-    if (!confirm('هل أنت متأكد من طرد هذا المستخدم نهائياً؟')) return;
-    try {
-      const targetUserId = adminTargetUser.uid;
-      setSuccessAction('kick');
-      const userRef = doc(db, 'users', targetUserId);
-      
-      await setDoc(userRef, { isBanned: true }, { merge: true });
-      await update(ref(rtdb, 'users/' + targetUserId), { isBanned: true });
-
-      console.log('تم طرد المستخدم بنجاح ✅');
-      alert('تم تحديث البيانات في Firebase ✅');
-      
-      setTimeout(() => {
-        setAdminTargetUser(null);
-        setSuccessAction(null);
-      }, 1500);
-    } catch (err) {
-      alert('فشل عملية الطرد');
-      setSuccessAction(null);
-    }
-  };
-
   return (
-    <div className="flex flex-col h-screen bg-[#05070a] text-white font-arabic" dir="rtl">
+    <div className="flex flex-col h-[100dvh] bg-[#05070a] text-white font-arabic" dir="rtl">
       {/* Immersive Background */}
       <div className="absolute inset-0 bg-[#05070a] -z-10" />
       <div className="absolute top-0 right-0 w-full h-[50%] bg-gradient-to-b from-indigo-900/10 to-transparent -z-10" />
       
       {/* Header */}
-      <header className="h-20 flex items-center justify-between px-6 border-b border-white/5 bg-[#0a0f18]/60 backdrop-blur-2xl sticky top-0 z-50">
+      <header className="h-20 shrink-0 flex items-center justify-between px-6 border-b border-white/5 bg-[#0a0f18]/60 backdrop-blur-2xl sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
@@ -351,14 +395,28 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
                 </span>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-black gold-gradient-text">
-                    <span>قاعة {roomName}</span>
+                    <span>{privateRoomData ? `غرفة ${privateRoomData.name}` : `قاعة ${roomName}`}</span>
                   </h2>
                   {isAdmin && <Crown className="w-3.5 h-3.5 text-amber-500" />}
+                  {privateRoomData?.ownerId === effectiveMyUid && (
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={toggleRoomLock}
+                        className={`p-1.5 rounded-lg border transition-all ${privateRoomData.isLocked ? 'bg-red-500/20 border-red-500/20 text-red-500' : 'bg-green-500/20 border-green-500/20 text-green-500'}`}
+                        title={privateRoomData.isLocked ? 'فتح الغرفة' : 'قفل الغرفة'}
+                      >
+                        {privateRoomData.isLocked ? <Ban className="w-3 h-3" /> : <ShieldCheck className="w-3 h-3" />}
+                      </button>
+                      <button 
+                        onClick={() => setShowBannedModal(true)}
+                        className="p-1.5 rounded-lg border border-white/10 bg-white/5 text-gray-400 hover:text-white transition-all"
+                        title="إدارة المحظورين"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-[8px] text-green-400 font-black uppercase tracking-widest">مباشر الآن</span>
               </div>
             </div>
           </div>
@@ -374,7 +432,7 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
       {/* Messages Area */}
       <div 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-8 space-y-6 scroll-smooth relative"
+        className="flex-1 overflow-y-auto px-4 pt-8 pb-[100px] space-y-6 scroll-smooth relative"
       >
         <AnimatePresence>
           {showRoyalEntry && (
@@ -395,8 +453,8 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
                     <Crown className="w-5 h-5 text-amber-500 fill-amber-500 animate-pulse" />
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[12px] font-black gold-gradient-text uppercase tracking-tighter">
-                      <span>👑 تم دخول المطور دودي-Dody إلى الغرفة الآن</span>
+                    <span className="text-[14px] font-black gold-gradient-text uppercase tracking-tighter">
+                      👑 تم دخول المطور دودي-Dody إلى الغرفة الآن
                     </span>
                     <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
                   </div>
@@ -406,16 +464,14 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
           )}
         </AnimatePresence>
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <motion.div 
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="w-10 h-10 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full"
-            />
-            <p className="text-indigo-400 text-[10px] font-black tracking-widest animate-pulse">جاري الاتصال الملكي...</p>
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-4 text-center">
+            <div className="w-6 h-6 rounded-full border-2 border-t-transparent border-indigo-500 animate-spin mb-2 mx-auto" />
+            <p className="text-[10px] text-gray-400 font-bold">جاري تحديث القاعة...</p>
           </div>
-        ) : messages.length === 0 ? (
+        )}
+
+        {messages.length === 0 && !loading ? (
           <div className="flex flex-col items-center justify-center h-full text-center opacity-30">
             <MessageSquare className="w-16 h-16 mb-4 text-indigo-400" />
             <p className="text-lg font-bold">بدء المحادثة</p>
@@ -424,23 +480,25 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
         ) : (
           <div className="max-w-2xl mx-auto space-y-4">
             <AnimatePresence initial={false}>
-              {messages.map((msg, idx) => {
-                const isMe = msg.uid === auth.currentUser?.uid;
-                const realAdminUid = window.localStorage.getItem('admin_uid_cache') || (window as any).OFFICIAL_ADMIN_UID;
+              {messages.map((msg) => {
+                const isMe = msg.uid === effectiveMyUid;
+                const realAdminUid = 'dev_admin_account_lm656508';
                 const msgIsManager = msg.uid === realAdminUid || (msg as any).username === 'aa' || (msg as any).isManager === true;
                 
                 // Reactive sync - checks profilesCache first for real-time rank updates
                 const liveProfile = profilesCache[msg.uid] || {};
-                let hasVip = (liveProfile.isVip || msg.isVip || msgIsManager);
-                let membershipType = hasVip ? (liveProfile.membership || msg.membership) : null;
+                const currentRole = liveProfile.role || liveProfile.membership || msg.role || msg.membership;
+                let hasVip = (liveProfile.isVip || msg.isVip || msgIsManager || !!currentRole);
+                let membershipType = hasVip ? currentRole : null;
                 
                 if (isMe) {
-                  hasVip = (userIsVip || isAdmin);
-                  membershipType = hasVip ? userMembership : null;
+                  const myRole = userData?.role || userData?.membership || userMembership;
+                  hasVip = (userIsVip || isAdmin || !!myRole);
+                  membershipType = hasVip ? myRole : null;
                 }
 
-                // Force Dody's permanent prestige override
-                if (msgIsManager) {
+                // Force Dody's permanent prestige override if no specific role set
+                if (msgIsManager && !membershipType) {
                   hasVip = true;
                   membershipType = 'famous';
                 }
@@ -471,9 +529,23 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
                   >
                     <div className={`flex flex-col gap-1 max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
                       <div className={`flex items-center gap-1.5 ${isMe ? 'ml-auto mr-2 flex-row-reverse' : 'mr-auto ml-2'}`}>
-                        <span className={`${msgIsManager ? 'text-amber-500' : 'text-indigo-400'} text-[13px] font-bold`}>
+                        <button 
+                          onClick={() => onOpenProfile?.({ 
+                            uid: msg.uid, 
+                            displayName: msg.displayName || (msgIsManager ? 'دودي-Dody 👑' : 'عضو ملكي'),
+                            photoURL: msg.photoURL,
+                            username: (msg as any).username
+                          })}
+                          className={`
+                            text-[13px] font-bold hover:underline transition-all
+                            ${msgIsManager ? 'text-amber-500' : 'text-indigo-400'}
+                            ${membershipType === 'premium' ? '!text-amber-400' : ''}
+                            ${membershipType === 'influencer' ? '!text-green-400' : ''}
+                            ${membershipType === 'famous' ? '!text-red-500' : ''}
+                          `}
+                        >
                           <span>{msgIsManager ? (msg.displayName || 'دودي-Dody 👑') : msg.displayName}</span>
-                        </span>
+                        </button>
                         {msgIsManager && <Shield className="w-3 h-3 text-amber-500 fill-amber-500/10" />}
                         {membershipType === 'famous' && (
                           <span className="animated-gold-tag text-[12px]"><span>#المشهور</span></span>
@@ -487,13 +559,27 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
                         {msgIsManager && (
                           <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded border border-amber-500/20 font-black"><span>ADMIN</span></span>
                         )}
+                        {!isMe && privateRoomData?.ownerId === effectiveMyUid && msg.uid !== 'system_announcement' && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleKickFromPrivateRoom(msg.uid, msg.displayName); }}
+                            className="p-1 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-all active:scale-90"
+                            title="طرد وحظر من الغرفة"
+                          >
+                            <UserMinus className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                       
                       <div className="relative group flex items-end gap-2">
                         {!isMe && (
                           <div className="flex flex-col gap-1 items-center">
                             <button 
-                              onClick={() => isAdmin ? setAdminTargetUser(msg) : onOpenDM?.({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL, username: (msg as any).username })}
+                              onClick={() => onOpenProfile?.({ 
+                                uid: msg.uid, 
+                                displayName: msg.displayName || 'عضو ملكي',
+                                photoURL: msg.photoURL,
+                                username: (msg as any).username
+                              })}
                               className="relative active:scale-95 transition-transform shrink-0"
                             >
                               <img 
@@ -504,11 +590,14 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
                               {msgIsManager && <Crown className="absolute -top-1 -right-1 w-3.5 h-3.5 text-amber-500 fill-amber-500" />}
                             </button>
                             <button 
-                              onClick={() => onOpenDM?.({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL, username: (msg as any).username })}
-                              className="bg-indigo-600/20 p-1 rounded-lg text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all active:scale-90"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDM?.({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL, username: (msg as any).username });
+                              }}
+                              className="bg-indigo-600/20 p-1.5 rounded-lg text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all active:scale-90 shadow-sm"
                               title="مراسلة خاصة"
                             >
-                              <MessageSquare className="w-3 h-3" />
+                              <MessageSquare className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         )}
@@ -531,14 +620,22 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
                         </div>
 
                         {isMe && (
-                          <div className="relative shrink-0">
+                          <button 
+                            onClick={() => onOpenProfile?.({ 
+                              uid: msg.uid, 
+                              displayName: msg.displayName || 'عضو ملكي',
+                              photoURL: msg.photoURL,
+                              username: (msg as any).username
+                            })}
+                            className="relative shrink-0 active:scale-95 transition-transform"
+                          >
                             <img 
                               src={msg.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${msg.displayName || 'User'}`} 
                               className={`w-9 h-9 rounded-full border object-cover ${isAdmin ? 'border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.3)]' : 'border-indigo-500/30'}`}
                               alt="avatar"
                             />
                             {isAdmin && <Crown className="absolute -top-1 -left-1 w-3.5 h-3.5 text-amber-500 fill-amber-500" />}
-                          </div>
+                          </button>
                         )}
 
                         {(isMe || isAdmin) && (
@@ -563,7 +660,7 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
       </div>
 
       {/* Input Section */}
-      <div className="p-4 bg-gradient-to-t from-[#05070a] to-transparent pb-8">
+      <div className="fixed bottom-0 left-0 w-full p-4 bg-[#05070a] border-t border-white/5 z-[60] shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
         {isMuted ? (
           <div className="max-w-2xl mx-auto p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-center text-red-500 font-black text-sm animate-pulse">
             أنت مكتوم حالياً بواسطة الإدارة الملكية ⚠️
@@ -591,120 +688,67 @@ export default function ChatRoom({ room, roomName, onBack, onOpenDM, userData }:
         )}
       </div>
 
-      {/* User Profile Modal */}
+      {/* User Profile Modal removed - now handled globally by App.tsx */}
+
+      {/* Banned Users Modal for Famous Owner */}
       <AnimatePresence>
-        {adminTargetUser && (
+        {showBannedModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div 
-               initial={{ opacity: 0 }}
-               animate={{ opacity: 1 }}
-               exit={{ opacity: 0 }}
-               onClick={() => setAdminTargetUser(null)}
-               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setShowBannedModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
             />
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-[#0f172a] border border-white/10 rounded-3xl p-6 w-full max-w-xs relative z-10 shadow-2xl"
+              className="relative w-full max-w-md bg-[#0a0f18] border border-amber-500/30 rounded-[2.5rem] shadow-[0_20px_50px_rgba(245,158,11,0.2)] overflow-hidden"
             >
-              <div className="text-center mb-6">
-                <img 
-                  src={adminTargetUser.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${adminTargetUser.displayName}`} 
-                  className="w-20 h-20 rounded-2xl mx-auto border-2 border-indigo-500 shadow-xl mb-3 object-cover"
-                  alt="target"
-                />
-                <h3 className="text-lg font-bold text-white">{adminTargetUser.displayName}</h3>
-                <p className="text-[10px] text-indigo-400 font-black mt-1 opacity-90 flex items-center justify-center gap-1 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 shadow-md uppercase">
-                  <Shield className="w-3 h-3 text-indigo-400" />
-                  {adminTargetUser.username ? `@${adminTargetUser.username}` : 'عضو ملكي'}
-                </p>
+              <div className="p-6 border-b border-white/5 bg-gradient-to-r from-amber-500/10 to-transparent">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                       <Ban className="w-5 h-5 text-amber-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">إدارة المطرودين 🎪</h3>
+                      <p className="text-[10px] text-amber-500/60 font-black uppercase">قائمة الحظر الحالية لغرفتك</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowBannedModal(false)} className="text-gray-500 hover:text-white transition-colors">إغلاق</button>
+                </div>
               </div>
 
-              <div className="space-y-4">
-                <button 
-                  onClick={() => {
-                    onOpenDM?.({ uid: adminTargetUser.uid, displayName: adminTargetUser.displayName, photoURL: adminTargetUser.photoURL, username: adminTargetUser.username });
-                    setAdminTargetUser(null);
-                  }}
-                  className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all font-black text-sm shadow-lg shadow-indigo-600/20 active:scale-95"
-                >
-                  <MessageSquare className="w-5 h-5" />
-                  <span>مراسلة خاصة ✉️</span>
-                </button>
-
-                {isAdmin && (
-                  <div className="pt-4 border-t border-white/5 space-y-3">
-                    <div className="text-[10px] text-amber-500/50 font-black uppercase tracking-[0.2em] text-center mb-2">الأوامر الملكية</div>
-                    
-                    {successAction && (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="py-3 bg-green-500/10 border border-green-500/20 rounded-xl text-center text-[10px] text-green-400 font-bold"
-                      >
-                        تم تنفيذ الأمر الملكي بنجاح ✅
-                      </motion.div>
-                    )}
-
-                    {!successAction && (
-                      <div className="grid grid-cols-1 gap-2">
-                        <button 
-                          onClick={() => grantMembership('famous')}
-                          className="w-full group flex items-center justify-between py-3 px-4 bg-red-500/5 hover:bg-red-500/20 text-red-400 border border-red-500/10 hover:border-red-500/40 rounded-xl transition-all active:scale-95"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg group-hover:scale-125 transition-transform">👑</span>
-                            <span className="text-[11px] font-black uppercase">منح مشهور</span>
-                          </div>
-                        </button>
-
-                        <button 
-                          onClick={() => grantMembership('influencer')}
-                          className="w-full group flex items-center justify-between py-3 px-4 bg-green-500/5 hover:bg-green-500/20 text-green-400 border border-green-500/10 hover:border-green-500/40 rounded-xl transition-all active:scale-95"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg group-hover:scale-125 transition-transform">✨</span>
-                            <span className="text-[11px] font-black uppercase">منح مؤثر</span>
-                          </div>
-                        </button>
-
-                        <button 
-                          onClick={() => grantMembership('premium')}
-                          className="w-full group flex items-center justify-between py-3 px-4 bg-orange-500/5 hover:bg-orange-500/20 text-orange-400 border border-orange-500/10 hover:border-orange-500/40 rounded-xl transition-all active:scale-95"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg group-hover:scale-125 transition-transform">⭐</span>
-                            <span className="text-[11px] font-black uppercase">منح مميز</span>
-                          </div>
-                        </button>
-
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          <button 
-                            onClick={toggleMute}
-                            className="flex items-center justify-center gap-2 py-3 bg-gray-500/5 hover:bg-gray-500/20 text-gray-400 border border-gray-500/10 rounded-xl transition-all active:scale-95 text-[10px] font-black"
-                          >
-                            <VolumeX className="w-3 h-3" />
-                            <span>كتم</span>
-                          </button>
-                          <button 
-                            onClick={handleKick}
-                            className="flex items-center justify-center gap-2 py-3 bg-rose-500/5 hover:bg-rose-500/20 text-rose-500 border border-rose-500/10 rounded-xl transition-all active:scale-95 text-[10px] font-black"
-                          >
-                            <Ban className="w-3 h-3" />
-                            <span>طرد</span>
-                          </button>
-                        </div>
-
-                        <button 
-                          onClick={() => grantMembership(null)}
-                          className="w-full py-2 text-[9px] text-gray-600 hover:text-gray-400 transition-colors font-black uppercase tracking-widest text-center mt-2"
-                        >
-                          سحب كافة الصلاحيات ⚠️
-                        </button>
-                      </div>
-                    )}
+              <div className="p-4 max-h-[60vh] overflow-y-auto space-y-3">
+                {bannedUsersList.length === 0 ? (
+                  <div className="py-20 text-center opacity-30">
+                    <ShieldCheck className="w-12 h-12 mx-auto mb-3" />
+                    <p className="text-sm font-bold">لا يوجد أي أشخاص محظورين حالياً</p>
                   </div>
+                ) : (
+                  bannedUsersList.map(u => (
+                    <div key={u.uid} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 border border-red-500/20">
+                           <UserIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-white">{u.displayName}</h4>
+                          <span className="text-[10px] text-gray-500">@{u.username}</span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleUnban(u.uid)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl text-[10px] font-black hover:bg-green-500 hover:text-white transition-all active:scale-90"
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        إلغاء الحظر 🔓
+                      </button>
+                    </div>
+                  ))
                 )}
               </div>
             </motion.div>

@@ -1,0 +1,8 @@
+{
+  "name": "تطبيق دردشه دودي",
+  "description": "تطبيق دودي دردشه عربيه  دودي دردشه تطبيق عراقي ",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

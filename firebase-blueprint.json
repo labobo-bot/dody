@@ -1,85 +1,74 @@
 {
   "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user's public profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "username": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isVip": { "type": "boolean" },
+        "membership": { "type": "string", "enum": ["premium", "influencer", "famous", "none"] },
+        "role": { "type": "string" },
+        "isBanned": { "type": "boolean" },
+        "isMuted": { "type": "boolean" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Sensitive user data.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "emailVerified": { "type": "boolean" },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email"]
+    },
     "Message": {
       "title": "Message",
-      "description": "A chat message",
+      "description": "A message sent in a chat room.",
       "type": "object",
       "properties": {
         "text": { "type": "string" },
         "uid": { "type": "string" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
-        "email": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "room": { "type": "string" }
-      },
-      "required": ["text", "uid", "displayName", "timestamp", "room"]
-    },
-    "Room": {
-      "title": "Room",
-      "description": "A chat room",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "createdBy": { "type": "string" }
-      },
-      "required": ["name"]
-    },
-    "User": {
-      "title": "User",
-      "description": "User profile",
-      "type": "object",
-      "properties": {
-        "displayName": { "type": "string" },
-        "username": { "type": "string" },
-        "email": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "isBanned": { "type": "boolean" },
-        "isMuted": { "type": "boolean" },
-        "isVip": { "type": "boolean" },
+        "timestamp": { "type": "object" },
         "membership": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "isVip": { "type": "boolean" },
+        "isManager": { "type": "boolean" },
+        "username": { "type": "string" }
       },
-      "required": ["displayName", "username", "email"]
-    },
-    "Admin": {
-      "title": "Admin",
-      "description": "Admin record",
-      "type": "object",
-      "properties": {
-        "email": { "type": "string" }
-      }
-    },
-    "SystemHealth": {
-      "title": "SystemHealth",
-      "description": "Health check document",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string" }
-      }
+      "required": ["text", "uid", "timestamp"]
     }
   },
   "firestore": {
-    "/rooms/{roomId}/messages/{messageId}": {
-      "schema": "Message",
-      "description": "Messages within a specific room"
-    },
-    "/rooms/{roomId}": {
-      "schema": "Room",
-      "description": "Chat room metadata"
-    },
     "/users/{userId}": {
       "schema": "User",
-      "description": "User profiles"
+      "description": "Public user profiles."
     },
-    "/admins/{userId}": {
-      "schema": "Admin",
-      "description": "Admin list"
+    "/users/{userId}/private/info": {
+      "schema": "UserPrivate",
+      "description": "Sensitive user data."
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Archived messages for chat rooms (RTDB is primary)."
     },
     "/system/health": {
-      "schema": "SystemHealth",
-      "description": "Health check"
+      "schema": { "type": "object", "properties": { "status": { "type": "string" } } },
+      "description": "System health check."
+    },
+    "/admins/{userId}": {
+      "schema": { "type": "object", "properties": { "email": { "type": "string" } } },
+      "description": "Admin list for elevated permissions."
     }
   }
 }

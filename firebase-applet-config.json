@@ -1,10 +1,10 @@
 {
-  "projectId": "remixed-project-id",
-  "appId": "remixed-app-id",
-  "apiKey": "remixed-api-key",
-  "authDomain": "remixed-auth-domain",
-  "firestoreDatabaseId": "remixed-firestore-database-id",
-  "storageBucket": "remixed-storage-bucket",
-  "messagingSenderId": "remixed-messaging-sender-id",
-  "measurementId": "remixed-measurement-id"
+  "projectId": "divine-road-007pf",
+  "appId": "1:1007204244702:web:97a958593196c423a2364f",
+  "apiKey": "AIzaSyCe8U9ajUsKRInyz-iDIxSREAcw0ocKrzA",
+  "authDomain": "divine-road-007pf.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-09fa1a8b-393c-4da5-9891-8fc32b1398f8",
+  "storageBucket": "divine-road-007pf.firebasestorage.app",
+  "messagingSenderId": "1007204244702",
+  "measurementId": ""
 }

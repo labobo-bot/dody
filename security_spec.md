@@ -1,42 +1,26 @@
-# Security Specification for Dody Royale
+# Firestore Security Specification
 
 ## Data Invariants
-1. **Identity Integrity**: Users can only create and update their own profiles.
-2. **Admin Authority**: Only `lm656508@gmail.com` can grant memberships (famous, influencer, premium) or ban/mute users.
-3. **Verified Access**: Most operations (except initial profile creation) require `email_verified == true`.
-4. **Relational Consistency**: Messages must belong to an existing room (though in RTDB this is handled by path structure).
-5. **Immutable Records**: `createdAt` and `ownerId` fields cannot be changed after creation.
+1. A user can only write to their own profile (`/users/{uid}`).
+2. Sensitive fields like `isBanned`, `isMuted`, `membership`, `role`, and `isVip` can only be modified by an Admin.
+3. Users can only read their own private info (`/users/{uid}/private/info`).
+4. Messages in a room can be read by anyone signed in and verified.
+5. Messages can only be created by signed-in and verified users, and they must represent themselves.
 
-## The "Dirty Dozen" Payloads (Firestore)
+## The Dirty Dozen Payloads
 
-| # | Attack Type | Path | Payload | Expected Result |
-|---|-------------|------|---------|-----------------|
-| 1 | Identity Spoofing | `/users/other_uid` | `{ "displayName": "Hacker", "username": "hack" }` | PERMISSION_DENIED |
-| 2 | Privilege Escalation | `/users/me` | `{ "membership": "famous", "isVip": true }` | PERMISSION_DENIED |
-| 3 | Shadow Field Injection | `/rooms/room1/messages/msg1` | `{ "text": "hi", "uid": "me", "isVerified": true, ... }` | PERMISSION_DENIED |
-| 4 | Orphaned Write | `/rooms/fake_room/messages/msg1` | `{ "text": "hi", ... }` | PERMISSION_DENIED (if room checked) |
-| 5 | Identity Poisoning | `/users/very_long_id_...` | `{ ... }` | PERMISSION_DENIED |
-| 6 | Unverified Write | `/rooms/r1/messages/m1` | `{ "text": "spam" }` (by unverified user) | PERMISSION_DENIED |
-| 7 | Outcome Forging | `/users/me` | `{ "isBanned": false }` (trying to unban self) | PERMISSION_DENIED |
-| 8 | Resource Exhaustion | `/users/me` | `{ "displayName": "a".repeat(1000000) }` | PERMISSION_DENIED |
-| 9 | PII Leak | `/users/private_user` | `get()` by anonymous/stranger | PERMISSION_DENIED |
-| 10 | Immutable Bypass | `/users/me` | `{ "createdAt": "2000-01-01" }` (modifying existing) | PERMISSION_DENIED |
-| 11 | Recursive Cost Attack | `/rooms/r1/messages` | `list` with no filter | PERMISSION_DENIED |
-| 12 | System Field Modification | `/system/health` | `{ "status": "down" }` | PERMISSION_DENIED |
+1. **Self-Promotion Attack**: User attempts to set `isVip: true` on their own profile.
+2. **Identity Theft**: User A attempts to write to `/users/userB`.
+3. **Ghost Message**: User A attempts to send a message to `/rooms/lobby/messages/msg1` with `uid: userB`.
+4. **Banned User Write**: A user with `isBanned: true` attempts to send a message.
+5. **PII Leak**: User A attempts to read `/users/userB/private/info`.
+6. **Shadow Field Injection**: User attempts to add a hidden `isAdmin: true` field to their profile.
+7. **Timestamp Spoofing**: User attempts to set `createdAt` to a date in the future.
+8. **Admin Impersonation**: User attempts to write to `/admins/{uid}` (if it existed, or create it).
+9. **Role Escalation**: User attempts to set `membership: 'famous'` via a profile update.
+10. **ID Poisoning**: User attempts to create a document with a 2KB long string as an ID.
+11. **Muted User Bypass**: A user with `isMuted: true` attempts to send a message to Firestore archive.
+12. **Malicious Enum**: User attempts to set `membership: 'super_admin'` which is not in the enum.
 
-## The "Dirty Dozen" Payloads (Realtime Database)
-
-| # | Attack Type | Path | Payload | Expected Result |
-|---|-------------|------|---------|-----------------|
-| 1 | Unauthorized Root Write | `/` | `{ "hack": true }` | PERMISSION_DENIED |
-| 2 | Public Data Theft | `/users` | `read` (trying to list all users) | PERMISSION_DENIED |
-| 3 | User Profile Takeover | `users/other_user_id` | `{ "isBanned": false }` | PERMISSION_DENIED |
-| 4 | Membership Self-Grant | `users/my_id/membership` | `"famous"` | PERMISSION_DENIED |
-| 5 | Unauthorized DM Access | `user_dms/other_user` | `read` | PERMISSION_DENIED |
-| 6 | Ghost Message | `rooms/room1/messages` | `{ "text": "hi", "uid": "fake" }` | PERMISSION_DENIED |
-| 7 | Global Block Bypass | `blocks/other_user` | `write` | PERMISSION_DENIED |
-| 8 | Status Forging | `users/my_id/isAdmin` | `true` | PERMISSION_DENIED |
-| 9 | Unauthenticated Read | `rooms/public/messages` | `read` (no login) | PERMISSION_DENIED |
-| 10 | Data Trashing | `rooms/room1` | `set(null)` | PERMISSION_DENIED |
-| 11 | PII Scraping | `users` | `.indexOn: ["email"]` | PERMISSION_DENIED |
-| 12 | Admin Impersonation | `users/my_id` | `{ "role": "admin" }` | PERMISSION_DENIED |
+## Test Runner (Conceptual)
+The `firestore.rules` will be verified against these scenarios.
