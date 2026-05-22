@@ -10,37 +10,12 @@
     <meta name="keywords" content="دودي, dody, شات, دردشة, عضوية ذهبية, توثيق حسابات" />
     <meta name="author" content="Dody Developer" />
     <link rel="canonical" href="https://github.io" />
-
-    <!-- سطر التحويل السحري لفتح التطبيق وتخطي الشاشة البيضاء نهائياً بلمحة بصر (0 ثانية) الموجه للسيرفر الجديد الشغال -->
-    <meta http-equiv="refresh" content="0; url=https://run.app" />
-
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #0f172a;
-            font-family: Arial, sans-serif;
-            color: white;
-        }
-        .loader {
-            border: 4px solid #1e293b;
-            border-top: 4px solid #fbbf24;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
 </head>
-<body>
-    <div class="loader"></div>
-    <p style="margin-right:15px;">...جاري الانتقال إلى تطبيق دردشة دودي المحدث</p>
+<body class="bg-slate-900 text-white">
+    <!-- الحاوية الرئيسية لتشغيل شات دودي وغرف وقاعات الدردشة مباشرة -->
+    <div id="root"></div>
+    
+    <!-- تم تصحيح امتداد ملف التشغيل ليتطابق مع بنية التحديث الجديد ويفتح مباشرة وبدون تحويلات مكسورة -->
+    <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
