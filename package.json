@@ -1,59 +1,19 @@
-===== vite.config.ts =====
-
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  base: '/',
-  publicDir: false
-})
-
-===== index.html =====
-
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>تطبيق دودي</title>
-<meta name="description" content="تطبيق دودي - شات العضويات الموثقة" />
-<link rel="icon" href="https://i.ibb.co/Lzn4PZk/image-5.png" />
-</head>
-
-<body>
-
-<div id="root"></div>
-
-<script type="module" src="/main.tsx"></script>
-
-</body>
-</html>
-
-===== main.tsx =====
-
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-
-function App() {
-  return (
-    <div style={{
-      display:'flex',
-      justifyContent:'center',
-      alignItems:'center',
-      height:'100vh',
-      fontSize:'30px',
-      fontWeight:'bold'
-    }}>
-      ✅ تطبيق دودي شغال
-    </div>
-  )
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.2.3"
+  }
 }
-
-ReactDOM.createRoot(
-  document.getElementById('root')!
-).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-)
