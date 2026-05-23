@@ -50,7 +50,7 @@ content="شات عربي مجاني وغرف دردشة عراقية داخل ت
 <meta name="twitter:image"
 content="https://labobo-bot.github.io/dody/icon.png">
 
-<!-- أيقونة -->
+<!-- أيقونة الموقع -->
 <link rel="icon" href="icon.png">
 
 <style>
@@ -83,16 +83,18 @@ margin-bottom:15px;
 
 h1{
 color:#f59e0b;
+margin-bottom:10px;
 }
 
 h2{
 color:#9ca3af;
 font-size:18px;
-margin-top:-5px;
+margin-top:0;
 }
 
 p{
 color:#9ca3af;
+line-height:1.8;
 }
 
 .btn{
@@ -105,8 +107,6 @@ text-decoration:none;
 font-weight:bold;
 box-sizing:border-box;
 transition:.2s;
-border:none;
-cursor:pointer;
 font-size:16px;
 }
 
@@ -123,7 +123,6 @@ color:black;
 background:#1f2937;
 color:#f59e0b;
 border:1px solid #374151;
-display:none;
 }
 
 .footer{
@@ -149,24 +148,25 @@ color:#6b7280;
 </h2>
 
 <p>
-شات التعارف العراقي والعربي المجاني
+شات التعارف العراقي والعربي المجاني مع غرف دردشة ورسائل خاصة وتجربة سريعة وآمنة.
 </p>
 
-<!-- كلمات مفتاحية -->
+<!-- كلمات مفتاحية لمحركات البحث -->
 <p style="display:none;">
 تطبيق دردشة عربي دودي، شات دودي، دردشة عربية مجانية، غرف دردشة عراقية، تحميل تطبيق دودي APK
 </p>
 
-<!-- زر فتح التطبيق -->
-<button class="btn chat" onclick="openDodyApp()">
+<!-- دخول الشات -->
+<a class="btn chat"
+href="https://ais-pre-almlls3bs7qwdnheycdglf-737817258666.europe-west2.run.app/"
+target="_blank">
 
-🌐 فتح تطبيق دودي
+🌐 دخول الدردشة مباشرة
 
-</button>
+</a>
 
-<!-- زر التحميل -->
+<!-- تحميل APK -->
 <a class="btn apk"
-id="downloadBtn"
 href="https://labobo-bot.github.io/dody/6a10cccfe0bfc2b3da309405.apk"
 target="_blank">
 
@@ -179,22 +179,6 @@ target="_blank">
 <div class="footer">
 Dody Chat Studio © 2026
 </div>
-
-<script>
-
-function openDodyApp() {
-
-  // محاولة فتح التطبيق
-  window.location.href = "dody://open";
-
-  // إذا التطبيق غير مثبت يظهر زر التحميل
-  setTimeout(function() {
-    document.getElementById("downloadBtn").style.display = "block";
-  }, 2000);
-
-}
-
-</script>
 
 </body>
 </html>
