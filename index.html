@@ -8,14 +8,6 @@
 
 <title>دودي | تطبيق دردشة عربي</title>
 
-<meta name="description"
-content="دودي هو تطبيق دردشة عربي مجاني يعمل على الآيفون والأندرويد ويوفر غرف شات ورسائل خاصة وتجربة سريعة وآمنة.">
-
-<meta name="keywords"
-content="دودي, دردشة دودي, شات عربي, تطبيق دردشة, دردشة عراقية, شات مجاني">
-
-<meta name="theme-color" content="#030712">
-
 <link rel="icon" href="icon.png">
 
 <style>
@@ -50,11 +42,6 @@ h1{
 color:#f59e0b;
 }
 
-h2{
-color:#9ca3af;
-font-size:18px;
-}
-
 p{
 color:#9ca3af;
 line-height:1.8;
@@ -70,11 +57,6 @@ text-decoration:none;
 font-weight:bold;
 box-sizing:border-box;
 font-size:16px;
-transition:.2s;
-}
-
-.btn:hover{
-opacity:.9;
 }
 
 .chat{
@@ -106,37 +88,46 @@ color:#6b7280;
 
 <h1>تطبيق دردشة دودي</h1>
 
-<h2>
-شات عربي مجاني للآيفون والأندرويد
-</h2>
-
 <p>
-ادخل إلى غرف الدردشة العربية والعراقية مباشرة من المتصفح أو حمل التطبيق للأندرويد.
+شات عربي مجاني يعمل على الآيفون والأندرويد.
 </p>
 
-<!-- دخول التطبيق من المتصفح -->
+<!-- دخول الشات -->
 <a class="btn chat"
 href="https://ais-pre-almlls3bs7qwdnheycdglf-737817258666.europe-west2.run.app/"
 target="_blank">
 
-🌐 دخول الدردشة الآن
+🌐 دخول الدردشة
 
 </a>
 
-<!-- تحميل APK للأندرويد -->
+<!-- زر تحميل للأندرويد فقط -->
+<div id="androidDownload" style="display:none;">
+
 <a class="btn apk"
 href="https://labobo-bot.github.io/dody/6a10cccfe0bfc2b3da309405.apk"
 target="_blank">
 
-📥 تحميل التطبيق للأندرويد
+📥 تحميل التطبيق
 
 </a>
+
+</div>
 
 </div>
 
 <div class="footer">
 Dody Chat Studio © 2026
 </div>
+
+<script>
+
+// كشف الأندرويد
+if (/Android/i.test(navigator.userAgent)) {
+  document.getElementById("androidDownload").style.display = "block";
+}
+
+</script>
 
 </body>
 </html>
